@@ -1,81 +1,63 @@
 import tkinter as tk
 from tkinter import colorchooser
-import math
 
-# ===== БАЗОВЫЙ КЛАСС (Иерархия по требованию лабы) =====
+# ===== БАЗОВЫЙ КЛАСС =====
 class Shape:
-    def __init__(self, x, y, w=50, h=50, color="black"):
+    def __init__(self, x, y, size=60, color="black"):
         self.x = x
         self.y = y
-        self.w = w
-        self.h = h
+        self.w = size
+        self.h = size
         self.color = color
         self.selected = False
 
     def move(self, dx, dy, max_w, max_h):
-        """Логика перемещения вынесена в базу для исключения дублирования"""
+        """Перемещение с проверкой границ"""
         new_x = self.x + dx
         new_y = self.y + dy
-        # Проверка границ: ни одна часть не должна выйти за холст
         if 0 <= new_x and new_x + self.w <= max_w:
             self.x = new_x
         if 0 <= new_y and new_y + self.h <= max_h:
             self.y = new_y
 
-    def resize(self, dw, dh, max_w, max_h):
-        """Логика изменения размера вынесена в базу"""
-        new_w = max(10, self.w + dw) # Мин. размер 10
-        new_h = max(10, self.h + dh)
-        # Проверка границ при растяжении
-        if self.x + new_w <= max_w:
-            self.w = new_w
-        if self.y + new_h <= max_h:
-            self.h = new_h
+    def set_size(self, new_size, max_w, max_h):
+        """Изменение размера с проверкой границ"""
+        # Проверяем, не выйдет ли объект за границы при новом размере
+        if self.x + new_size <= max_w and self.y + new_size <= max_h:
+            self.w = new_size
+            self.h = new_size
 
     def draw(self, canvas):
         pass
 
     def draw_frame(self, canvas):
-        """Рамка выделения"""
         if self.selected:
             canvas.create_rectangle(self.x-2, self.y-2, self.x+self.w+2, self.y+self.h+2, 
                                      outline="red", dash=(4, 2))
 
     def contains(self, px, py):
-        """Базовая проверка попадания в прямоугольную область"""
         return self.x <= px <= self.x + self.w and self.y <= py <= self.y + self.h
 
-
 # ===== НАСЛЕДНИКИ =====
-
 class Rectangle(Shape):
     def draw(self, canvas):
         canvas.create_rectangle(self.x, self.y, self.x + self.w, self.y + self.h, 
                                 outline=self.color, width=2)
         self.draw_frame(canvas)
 
-class Circle(Shape): # Эллипс в границах w и h
+class Circle(Shape):
     def draw(self, canvas):
         canvas.create_oval(self.x, self.y, self.x + self.w, self.y + self.h, 
                            outline=self.color, width=2)
         self.draw_frame(canvas)
-    
-    def contains(self, px, py):
-        # Более точная проверка для круга (из лр3)
-        rx, ry = self.w/2, self.h/2
-        cx, cy = self.x + rx, self.y + ry
-        return ((px - cx)**2 / rx**2 + (py - cy)**2 / ry**2) <= 1
 
 class Triangle(Shape):
     def draw(self, canvas):
-        points = [self.x + self.w/2, self.y, 
-                  self.x, self.y + self.h, 
-                  self.x + self.w, self.y + self.h]
+        points = [self.x + self.w/2, self.y, self.x, self.y + self.h, self.x + self.w, self.y + self.h]
         canvas.create_polygon(points, outline=self.color, fill="", width=2)
         self.draw_frame(canvas)
 
-
-# ===== КОНТЕЙНЕР ОБЪЕКТОВ (из ЛР 3) =====
+# ===== КОНТЕЙНЕР ОБЪЕКТОВ =====
 class ShapeContainer:
     def __init__(self):
         self.shapes = []
@@ -97,35 +79,62 @@ class ShapeContainer:
     def delete_selected(self):
         self.shapes = [s for s in self.shapes if not s.selected]
 
-
-# ===== ГЛАВНОЕ ОКНО (GUI) =====
+# ===== ГЛАВНОЕ ОКНО =====
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Лабораторная 4: Визуальный редактор")
+        self.root.title("Visual Editor 4.0")
+        
         self.container = ShapeContainer()
-        self.current_type = "rect" # Тип по умолчанию
+        self.current_type = "rect"
+        self.current_size = 60
+        
+        # Переменные для Drag-and-Drop
+        self.last_x = 0
+        self.last_y = 0
 
-        # Панель инструментов (Меню)
-        self.toolbar = tk.Frame(root, bg="lightgray", pady=5)
-        self.toolbar.pack(side=tk.TOP, fill=tk.X)
+        self.setup_ui()
 
-        tk.Button(self.toolbar, text="Квадрат", command=lambda: self.set_type("rect")).pack(side=tk.LEFT, padx=5)
-        tk.Button(self.toolbar, text="Круг", command=lambda: self.set_type("circle")).pack(side=tk.LEFT, padx=5)
-        tk.Button(self.toolbar, text="Треугольник", command=lambda: self.set_type("tri")).pack(side=tk.LEFT, padx=5)
-        tk.Button(self.toolbar, text="Цвет", command=self.pick_color).pack(side=tk.LEFT, padx=15)
+    def setup_ui(self):
+        # Панель инструментов
+        toolbar = tk.Frame(self.root, bg="#f0f0f0", pady=5)
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        # Выбор типа
+        tk.Label(toolbar, text="Тип:").pack(side=tk.LEFT, padx=5)
+        for t, n in [("rect", "Квадрат"), ("circle", "Круг"), ("tri", "Треугольник")]:
+            tk.Button(toolbar, text=n, command=lambda arg=t: self.set_type(arg)).pack(side=tk.LEFT, padx=2)
+
+        # Ползунок размера
+        tk.Label(toolbar, text="Размер:").pack(side=tk.LEFT, padx=(20, 5))
+        self.size_scale = tk.Scale(toolbar, from_=10, to=200, orient=tk.HORIZONTAL, 
+                                   command=self.on_scale_change)
+        self.size_scale.set(self.current_size)
+        self.size_scale.pack(side=tk.LEFT)
+
+        tk.Button(toolbar, text="Цвет", command=self.pick_color).pack(side=tk.LEFT, padx=10)
+        tk.Button(toolbar, text="Удалить", command=self.delete_selected).pack(side=tk.RIGHT, padx=10)
 
         # Холст
-        self.canvas = tk.Canvas(root, width=800, height=600, bg="white")
+        self.canvas = tk.Canvas(self.root, width=800, height=600, bg="white")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        # События
-        self.canvas.bind("<Button-1>", self.on_click)
+        # Привязки событий
+        self.canvas.bind("<Button-1>", self.on_press)      # Нажали кнопку
+        self.canvas.bind("<B1-Motion>", self.on_drag)      # Ведем мышью
         self.root.bind("<Delete>", lambda e: self.delete_selected())
         self.root.bind("<KeyPress>", self.on_key)
 
     def set_type(self, t):
         self.current_type = t
+
+    def on_scale_change(self, val):
+        self.current_size = int(val)
+        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+        # Если есть выделенные - меняем им размер сразу
+        for s in self.container.get_selected():
+            s.set_size(self.current_size, cw, ch)
+        self.redraw()
 
     def pick_color(self):
         color = colorchooser.askcolor()[1]
@@ -134,10 +143,10 @@ class App:
                 s.color = color
             self.redraw()
 
-    def on_click(self, event):
-        ctrl = (event.state & 0x0004) != 0 # Проверка Ctrl для мультивыбора
+    def on_press(self, event):
+        ctrl = (event.state & 0x0004) != 0
+        self.last_x, self.last_y = event.x, event.y
         
-        # Ищем, кликнули ли по фигуре (с конца списка, чтобы брать верхнюю)
         clicked_shape = None
         for s in reversed(self.container.shapes):
             if s.contains(event.x, event.y):
@@ -145,49 +154,61 @@ class App:
                 break
 
         if clicked_shape:
-            if not ctrl:
+            if not ctrl and not clicked_shape.selected:
                 self.container.clear_selection()
-            clicked_shape.selected = True if not ctrl else not clicked_shape.selected
+            
+            if ctrl:
+                clicked_shape.selected = not clicked_shape.selected
+            else:
+                clicked_shape.selected = True
+            
+            # При выделении одного объекта, подтягиваем ползунок под его размер
+            if len(self.container.get_selected()) == 1:
+                self.size_scale.set(clicked_shape.w)
         else:
             if not ctrl:
                 self.container.clear_selection()
-                # Создаем новую фигуру при клике в пустоту
                 self.create_shape(event.x, event.y)
         
         self.redraw()
 
+    def on_drag(self, event):
+        """Перемещение объектов мышкой"""
+        dx = event.x - self.last_x
+        dy = event.y - self.last_y
+        
+        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+        for s in self.container.get_selected():
+            s.move(dx, dy, cw, ch)
+            
+        self.last_x, self.last_y = event.x, event.y
+        self.redraw()
+
     def create_shape(self, x, y):
-        # Базовый размер 60x60
-        if self.current_type == "rect":
-            new_s = Rectangle(x, y, 60, 60)
-        elif self.current_type == "circle":
-            new_s = Circle(x, y, 60, 60)
-        else:
-            new_s = Triangle(x, y, 60, 60)
+        # Используем текущий размер из ползунка
+        args = (x, y, self.current_size)
+        if self.current_type == "rect": new_s = Rectangle(*args)
+        elif self.current_type == "circle": new_s = Circle(*args)
+        else: new_s = Triangle(*args)
+        
+        # Проверка, чтобы не создалась за краем
+        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+        if x + self.current_size > cw: new_s.x = cw - self.current_size
+        if y + self.current_size > ch: new_s.y = ch - self.current_size
         
         self.container.add(new_s)
 
     def on_key(self, event):
         step = 5
-        shift = (event.state & 0x0001) != 0 # Shift для изменения размера
-        
+        shift = (event.state & 0x0001) != 0
         selected = self.container.get_selected()
         cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
 
         for s in selected:
-            if event.keysym == "Up":
-                if shift: s.resize(0, -step, cw, ch)
-                else: s.move(0, -step, cw, ch)
-            elif event.keysym == "Down":
-                if shift: s.resize(0, step, cw, ch)
-                else: s.move(0, step, cw, ch)
-            elif event.keysym == "Left":
-                if shift: s.resize(-step, 0, cw, ch)
-                else: s.move(-step, 0, cw, ch)
-            elif event.keysym == "Right":
-                if shift: s.resize(step, 0, cw, ch)
-                else: s.move(step, 0, cw, ch)
-        
+            if event.keysym == "Up": s.move(0, -step, cw, ch)
+            elif event.keysym == "Down": s.move(0, step, cw, ch)
+            elif event.keysym == "Left": s.move(-step, 0, cw, ch)
+            elif event.keysym == "Right": s.move(step, 0, cw, ch)
         self.redraw()
 
     def delete_selected(self):
@@ -197,7 +218,6 @@ class App:
     def redraw(self):
         self.canvas.delete("all")
         self.container.draw_all(self.canvas)
-
 
 if __name__ == "__main__":
     root = tk.Tk()
